@@ -26,7 +26,7 @@ class HealthCheckServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(b"Bot is running 24/7 with Broad Search Filter!")
+        self.wfile.write(b"Bot is running 24/7 with Safe Dot-Mix Generator!")
 
 def run_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -40,25 +40,21 @@ def get_gmail_service():
     else:
         raise Exception("Error: token.json file nahi mili!")
 
-# Dot Trick + Random Numbers Generator
-def generate_dot_number_gmail():
+# Safe Dot + Letters Mix Generator (Jo 100% aapke inbox me hi deliver hoga)
+def generate_safe_dot_gmail():
     username = MY_GMAIL_USERNAME
     result = username[0]
     
+    # Letters ke beech me random dots settings
     for letter in username[1:]:
         if random.choice([True, False]):
             result += '.'
         result += letter
         
-    if '.' not in result:
-        mid = len(username) // 2
-        result = username[:mid] + '.' + username[mid:]
-    
-    random_num = random.randint(10, 99)
-    return f"{result}.{random_num}@gmail.com"
+    return f"{result}@gmail.com"
 
 def auto_fetch_otp(chat_id, target_email):
-    print(f"[LIVE SCANNING] Checking all unread Instagram mails for: {target_email}")
+    print(f"[LIVE SCANNING] Checking fresh mail for: {target_email}")
     attempts = 0
     max_attempts = 36  # 3 minute timeout
     
@@ -67,7 +63,7 @@ def auto_fetch_otp(chat_id, target_email):
             break
         try:
             service = get_gmail_service()
-            # FIX: subject: filter hata diya, ab pure mail me kahin bhi instagram hoga aur unread hoga toh pakda jayega
+            # PURE INBOX me se jo bhi UNREAD mail Instagram ka ho use nikalega (Subject jhanjhat khatam)
             results = service.users().messages().list(userId='me', q='instagram is:unread').execute()
             messages = results.get('messages', [])
             
@@ -75,19 +71,19 @@ def auto_fetch_otp(chat_id, target_email):
                 msg = service.users().messages().get(userId='me', id=message['id']).execute()
                 snippet = msg.get('snippet', '')
                 
-                # 6 digit OTP dhundne ke liye regex
+                # 6 digit OTP dhundne ke liye
                 otp_match = re.search(r'\b\d{6}\b', snippet)
                 if otp_match:
                     otp_code = otp_match.group(0)
                     
                     success_text = (
                         f"⚡ **[FRESH OTP RECEIVED]** ⚡\n\n"
-                        f"📧 **Email:** `{target_email}`\n"
+                        f"📧 **Email Used:** `{target_email}`\n"
                         f"🔑 **Instagram Code:** `{otp_code}`\n"
                     )
                     bot.send_message(chat_id, success_text, parse_mode='Markdown')
                     
-                    # Mail ko read mark kar do taaki agli baar duplicate na aaye
+                    # Mail ko read mark kar do taaki agla wala setup fresh rhae
                     service.users().messages().batchModify(
                         userId='me', 
                         body={'ids': [message['id']], 'removeLabelIds': ['UNREAD']}
@@ -105,12 +101,12 @@ def auto_fetch_otp(chat_id, target_email):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "🤖 **Dot + Number Generator Ready!**\n\nNaya unique email lene ke liye `/generate` chalao.")
+    bot.reply_to(message, "🤖 **Safe Dot-Generator Ready!**\n\nNaya unique email lene ke liye `/generate` chalao.")
 
 @bot.message_handler(commands=['generate'])
 def generate_gmail(message):
     chat_id = message.chat.id
-    generated_email = generate_dot_number_gmail()
+    generated_email = generate_safe_dot_gmail()
     
     email_database[generated_email] = chat_id
     active_monitors.add(generated_email)
