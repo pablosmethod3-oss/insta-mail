@@ -6,12 +6,13 @@ import threading
 import telebot
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # 1. Telegram Bot Token
 BOT_TOKEN = "8883017716:AAEVENqtXin_yPedL7Sbuw6VKe5RsWagrn8"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# 2. Apna Main Gmail Username
+# 2. Apna Main Gmail Username (Bina @gmail.com ke)
 MY_GMAIL_USERNAME = "pablosmethod3"
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.modify']
@@ -19,81 +20,97 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googlea
 email_database = {}
 active_monitors = set()
 
+# === RENDER WEB SERVICE PORT FIX ===
+class HealthCheckServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Bot is running 24/7 with Plus-Gmail Trick!")
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckServer)
+    server.serve_forever()
+
 def get_gmail_service():
-    # Render par hum direct token.json se login karenge, browser ki zaroorat nahi padegi
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
         return build('gmail', 'v1', credentials=creds)
     else:
-        raise Exception("Error: token.json file nahi mili! Please GitHub par token.json upload karein.")
+        raise Exception("Error: token.json file nahi mili!")
 
-def generate_dot_gmail():
-    username = MY_GMAIL_USERNAME
-    dot_username = username[0]
-    for letter in username[1:]:
-        if random.choice([True, False]) and dot_username[-1] != '.':
-            dot_username += '.'
-        dot_username += letter
-    if '.' not in dot_username:
-        dot_username = username[:-1] + '.' + username[-1]
-    return f"{dot_username}@gmail.com"
+# Har baar ekdam naya aur unique email banane ka function (Plus Trick)
+def generate_unlimited_gmail():
+    # Ye har baar 4 digit ka random number laga dega jaise: pablosmethod03+4829@gmail.com
+    random_id = random.randint(1000, 9999)
+    return f"{MY_GMAIL_USERNAME}+{random_id}@gmail.com"
 
 def auto_fetch_otp(chat_id, target_email):
-    print(f"[LIVE SCANNING] Dhoond raha hu: {target_email}")
+    print(f"[LIVE SCANNING] Waiting for fresh OTP for: {target_email}")
     attempts = 0
-    max_attempts = 30
+    max_attempts = 36  # 3 minute tak scan karega
     
     while attempts < max_attempts:
         if target_email not in active_monitors:
             break
         try:
             service = get_gmail_service()
-            results = service.users().messages().list(userId='me', q='instagram').execute()
+            # Sirf UNREAD (jo abhi tak khula na ho) aur Instagram ke mail search karega
+            results = service.users().messages().list(userId='me', q='subject:instagram is:unread').execute()
             messages = results.get('messages', [])
             
             for message in messages:
                 msg = service.users().messages().get(userId='me', id=message['id']).execute()
                 snippet = msg.get('snippet', '')
                 
+                # 6 digit ka OTP code dhoondne ke liye
                 otp_match = re.search(r'\b\d{6}\b', snippet)
                 if otp_match:
                     otp_code = otp_match.group(0)
                     
                     success_text = (
-                        f"⚡ **[OTP RECEIVED]** ⚡\n\n"
-                        f"📧 **Email:** `{target_email}`\n"
+                        f"⚡ **[FRESH OTP RECEIVED]** ⚡\n\n"
+                        f"📧 **Email Used:** `{target_email}`\n"
                         f"🔑 **Instagram Code:** `{otp_code}`\n"
                     )
                     bot.send_message(chat_id, success_text, parse_mode='Markdown')
-                    print(f"[SUCCESS] OTP mil gaya: {otp_code}")
+                    
+                    # Mail ko read mark kar dega taaki ye dobara scan me na aaye
+                    service.users().messages().batchModify(
+                        userId='me', 
+                        body={'ids': [message['id']], 'removeLabelIds': ['UNREAD']}
+                    ).execute()
                     
                     active_monitors.discard(target_email)
                     return
         except Exception as e:
             print(f"API Fetching error: {e}")
             
-        time.sleep(5)
+        time.sleep(5)  # Har 5 second me check karega
         attempts += 1
+    
+    print(f"[TIMEOUT] OTP nahi mila: {target_email}")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "🤖 Bot Online 24/7 on Render! `/generate` chalao.")
+    bot.reply_to(message, "🤖 **Unlimited Gmail Bot Online!**\n\nAb har baar naya email milega. Code lene ke liye `/generate` chalao.")
 
 @bot.message_handler(commands=['generate'])
 def generate_gmail(message):
     chat_id = message.chat.id
-    generated_email = generate_dot_gmail()
+    generated_email = generate_unlimited_gmail()
     
     email_database[generated_email] = chat_id
     active_monitors.add(generated_email)
     
-    bot.send_message(chat_id, f"🎉 **Email:** `{generated_email}`\n\nIse Instagram me dalo...", parse_mode='Markdown')
+    bot.send_message(chat_id, f"🎉 **New Unique Email:** `{generated_email}`\n\nIse daalo, bot iska naya OTP nikaal dega!", parse_mode='Markdown')
     threading.Thread(target=auto_fetch_otp, args=(chat_id, generated_email)).start()
 
 if __name__ == '__main__':
     try:
-        print("[SETUP] Checking Connection...")
         get_gmail_service()
+        threading.Thread(target=run_health_server, daemon=True).start()
         print("[SUCCESS] Bot successfully started 24/7!")
         bot.infinity_polling()
     except Exception as e:
